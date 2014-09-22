@@ -29,11 +29,21 @@ find_treasure(const Image& in)
 {
     // Base: return Rect of treasure only
     // Bonus: return Rects of arrows and then treasure Rect
-    
-    ofstream fout("./out/2.txt");
+
     auto path = vector<Rect>();
 
     // RGB Luminance value = 0.3 R + 0.59 G + 0.11 B
+    Image binimg = in.deep_copy();
+
+    uint r, g, b;
+    for (uint i = 0; i < in.n_rows; i++)
+        for (uint j = 0; j < in.n_cols; j++) {
+            tie(r, g, b) = binimg(i, j);
+            uint lumin = 0;
+            if (1 - (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.83)
+                lumin = 255;
+            binimg(i, j) = make_tuple(lumin, lumin, lumin);
+        }
 
     queue <tuple <uint, uint>> que;
     vector <vector <uint>> used(in.n_rows);
@@ -42,49 +52,52 @@ find_treasure(const Image& in)
 
     uint m, n;
     uint k = 0;
+    vector<uint> numofel;
+    numofel.push_back(0);
     for (uint i = 0; i < used.size(); i++)
         for (uint j = 0; j < used[i].size(); j++) {
             if (!used[i][j]) {
-                cout << k++;
+                // cout << k++ << endl;
                 que.push(make_tuple(i, j));
-                used[i][j] = k;
+                used[i][j] = ++k;
+                numofel.push_back(0);
                 while (!que.empty()) {
                     tie(m, n) = que.front();
                     que.pop();
-                    if (m >= 1 && !used[m-1][n] && in(m,n) == in(m-1, n)) {
+                    if (m >= 1 && !used[m-1][n] && binimg(m,n) == binimg(m-1, n)) {
                         used[m-1][n] = k;
                         que.push(make_tuple(m-1, n));
+                        numofel[k]++;
                     }
-                    if (m+1 < used.size() && !used[m+1][n] && in(m,n) == in(m+1, n)) {
+                    if (m+1 < used.size() && !used[m+1][n] && binimg(m,n) == binimg(m+1, n)) {
                         used[m+1][n] = k;
                         que.push(make_tuple(m+1, n));
+                        numofel[k]++;
                     }
-                    if (n >= 1 && !used[m][n-1] && in(m,n) == in(m, n-1)) {
+                    if (n >= 1 && !used[m][n-1] && binimg(m,n) == binimg(m, n-1)) {
                         used[m][n-1] = k;
                         que.push(make_tuple(m, n-1));
+                        numofel[k]++;
                     }
-                    if (n+1 < used[i].size() && !used[m][n+1] && in(m,n) == in(m, n+1)) {
+                    if (n+1 < used[i].size() && !used[m][n+1] && binimg(m,n) == binimg(m, n+1)) {
                         used[m][n+1] = k;
                         que.push(make_tuple(m, n+1));
+                        numofel[k]++;
                     }
                 }
             }
         }
 
-    /*for (auto &rows : used) {
-        for (auto &x : rows)
-            fout << x;
-        fout << endl;
-    }*/
+    for (auto &a : numofel)
+        cout << a << endl;
 
-    Image img = in.deep_copy();
-    for (uint i = 0; i < img.n_rows; i++)
-        for (uint j = 0; j < img.n_cols; j++) {
-            int r = used[i][j];
-            img(i, j) = make_tuple(r, r, r);
+    for (uint i = 0; i < in.n_rows; i++)
+        for (uint j = 0; j < in.n_cols; j++) {
+            if (numofel[used[i][j]] < 100)
+                used[i][j] = 1;
         }
 
-    return make_tuple(path, img/*in.deep_copy()*/);
+    return make_tuple(path, binimg/*in.deep_copy()*/);
 }
 
 int main(int argc, char **argv)
