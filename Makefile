@@ -1,4 +1,4 @@
-CXX = g++-4.8
+CXX = g++-4.9
 CXXFLAGS = -O2 -g -Wall -std=c++0x
 
 # Strict compiler options

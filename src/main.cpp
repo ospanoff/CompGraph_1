@@ -8,6 +8,7 @@
 #include <tuple>
 #include <queue>
 #include <cmath>
+#include <algorithm>
 
 using std::string;
 using std::cout;
@@ -24,6 +25,29 @@ using std::queue;
 #include "matrix.h"
 
 typedef tuple<uint, uint, uint, uint> Rect;
+
+class MedianFilter
+{
+public:
+    tuple<uint, uint, uint> operator () (const Image &m) const
+    {
+        uint size = 2 * radius + 1;
+        vector <uint> r(size * size), g(size * size), b(size * size);
+        for (uint i = 0; i < size; ++i) {
+            for (uint j = 0; j < size; ++j) {
+                // Tie is useful for taking elements from tuple
+                tie(r[size * i + j], g[size * i + j], b[size * i + j]) = m(i, j);
+            }
+        }
+        sort(r.begin(), r.end());
+        sort(g.begin(), g.end());
+        sort(b.begin(), b.end());
+
+        return make_tuple(r[size*size / 2], g[size*size / 2], b[size*size / 2]);
+    }
+    // Radius of neighbourhoud, which is passed to that operator
+    static const int radius = 2;
+};
 
 // Finds connected components
 uint bfs(vector <vector <uint>> &used, const Image &binimg)
@@ -135,9 +159,11 @@ find_treasure(const Image& in)
     // Bonus: return Rects of arrows and then treasure Rect
 
     auto path = vector<Rect>();
-    
+        
     Image binimg = in.deep_copy();
     make_binarization(binimg);
+
+    binimg = binimg.unary_map(MedianFilter());
 
     vector <vector <uint>> used(in.n_rows);
     for (auto &rows : used)
