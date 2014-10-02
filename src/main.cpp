@@ -157,7 +157,7 @@ void count_geometrical_characteristics(const vector <vector <uint>> &used, vecto
         theta[i] = atan(2 * moment11[i] / (moment20[i] - moment02[i])) / 2;
 }
 
-void find_way(/*const Image &in, */Image &img,
+void find_way(Image &img, const vector <vector <uint>> &used,
               const vector <vector <tuple<uint, uint>>> &border,
               vector <uint> &avg_x, vector <uint> &avg_y, vector <double> &theta)
 {
@@ -167,9 +167,9 @@ void find_way(/*const Image &in, */Image &img,
     long long a, b;    
     double EPS = 0.03;
     for (uint i = 1; i < border.size(); i++) {
+        // find direction dots
         for (uint j = 0; j < border[i].size(); j++) {
             tie(a, b) = border[i][j];
-            // cout << a << ' ' << avg_y[i] << "| " << b << ' ' << avg_x[i] << "; \n";
             double at;
             if (b == avg_x[i])
                 at = atan(M_PI/2);
@@ -185,20 +185,51 @@ void find_way(/*const Image &in, */Image &img,
                 ok.push_back(make_tuple(a, b));
             }
         }
-        long long max_x = avg_x[i], max_y = avg_y[i];
+    
+        tie(a, b) = ok[0];
+        long long max_x = b, max_y = a;
         for (uint k = 0; k < ok.size(); k++) {
             tie(a, b) = ok[k];
-            img(a, b) = make_tuple(0, 0, 255);
-            long long dx = b - avg_x[i];
-            long long dy = a - avg_y[i];
-            long long m_dx = max_x - avg_x[i];
-            long long m_dy = max_y - avg_y[i];
+            double dx = fabs(b - avg_x[i]);
+            double dy = fabs(a - avg_y[i]);
+            double m_dx = fabs(max_x - avg_x[i]);
+            double m_dy = fabs(max_y - avg_y[i]);
             if (dx * dx + dy * dy > m_dy * m_dy + m_dx * m_dx) {
                 max_x = b;
                 max_y = a;
             }
         }
         img(max_y, max_x) = make_tuple(255, 0, 0);
+
+        int l, dx, dy;
+        int xr = abs(max_x - avg_x[i]);
+        int yr = abs(max_y - avg_y[i]);
+        if (xr > yr)
+            l = xr;
+        else
+            l = yr;
+        int px = (avg_x[i] << 12) + (1 << 11);
+        int py = (avg_y[i] << 12) + (1 << 11);
+        int ex = (max_x << 12) + (1 << 11);
+        int ey = (max_y << 12) + (1 << 11);
+        if (l != 0) {
+            dx = (ex - px) / l;
+            dy = (ey - py) / l;
+        } else {
+            dx = 0;
+            dy = 0;
+        }
+        
+        a = used[py >> 12][px >> 12];
+        while (used[py >> 12][px >> 12] == a || 
+               (used[py >> 12][px >> 12] == 1 && (py >> 12) < static_cast<long long>(used.size())
+                && (px >> 12) < static_cast<long long>(used[0].size()))) {
+            img(py >> 12, px >> 12) = make_tuple(255, 0, 255);
+            px += dx;
+            py += dy;
+        }
+
+        ok.clear();
     }
 }
 
@@ -257,7 +288,7 @@ find_treasure(const Image& in)
         }
     }
 
-    find_way(/*in, */img, border, avg_x, avg_y, theta);
+    find_way(/*in, */img, used, border, avg_x, avg_y, theta);
 
     /*for (uint i = 0; i < used.size(); i++) {
         for (uint j = 0; j < used[0].size(); j++)
