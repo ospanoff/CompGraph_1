@@ -232,7 +232,8 @@ void find_way(Image &img, const vector <vector <uint>> &used,
         dy = 0;
     }
 
-    while ((py >> 12) < static_cast<long long>(img.n_rows) && (px >> 12) < static_cast<long long>(img.n_cols) &&
+    while ((py >> 12) >= 0 && (px >> 12) >= 0 &&
+           (py >> 12) < static_cast<long long>(img.n_rows) && (px >> 12) < static_cast<long long>(img.n_cols) &&
            (used[py >> 12][px >> 12] == i+1 || used[py >> 12][px >> 12] == 1)) {
         img(py >> 12, px >> 12) = make_tuple(255, 0, 255);
         px += dx;
