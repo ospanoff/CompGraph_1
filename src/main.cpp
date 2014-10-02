@@ -90,7 +90,7 @@ uint bfs(vector <vector <uint>> &used, const Image &binimg)
 void make_binarization(Image &img)
 {
     uint r, g, b;
-    uint threshold = 33;
+    double threshold = 18;
     vector <uint> histogram(256);
     for (uint i = 0; i < img.n_rows; i++)
         for (uint j = 0; j < img.n_cols; j++) {
@@ -157,12 +157,10 @@ void count_geometrical_characteristics(const vector <vector <uint>> &used, vecto
         theta[i] = atan(2 * moment11[i] / (moment20[i] - moment02[i])) / 2;
 }
 
-void find_way(Image &img, const vector <vector <uint>> &used,
-              const vector <vector <tuple<uint, uint>>> &border,
-              vector <uint> &avg_x, vector <uint> &avg_y, vector <double> &theta)
+void find_dirs(const vector <vector <tuple<uint, uint>>> &border,
+               vector <uint> &avg_x, vector <uint> &avg_y, vector <double> &theta,
+               vector <uint> &dir_x, vector <uint> &dir_y)
 {
-    // Image im(in);
-
     vector <tuple <uint, uint>> ok;
     long long a, b;    
     double EPS = 0.03;
@@ -172,7 +170,7 @@ void find_way(Image &img, const vector <vector <uint>> &used,
             tie(a, b) = border[i][j];
             double at;
             if (b == avg_x[i])
-                at = atan(M_PI/2);
+                at = M_PI/2;
             else
                 at = atan(fabs((a - static_cast<long long>(avg_y[i]))) / fabs((b - static_cast<long long>(avg_x[i]))));
             
@@ -185,7 +183,8 @@ void find_way(Image &img, const vector <vector <uint>> &used,
                 ok.push_back(make_tuple(a, b));
             }
         }
-    
+
+        // ...cont. of finding direction
         tie(a, b) = ok[0];
         long long max_x = b, max_y = a;
         for (uint k = 0; k < ok.size(); k++) {
@@ -199,38 +198,68 @@ void find_way(Image &img, const vector <vector <uint>> &used,
                 max_y = a;
             }
         }
-        img(max_y, max_x) = make_tuple(255, 0, 0);
-
-        int l, dx, dy;
-        int xr = abs(max_x - avg_x[i]);
-        int yr = abs(max_y - avg_y[i]);
-        if (xr > yr)
-            l = xr;
-        else
-            l = yr;
-        int px = (avg_x[i] << 12) + (1 << 11);
-        int py = (avg_y[i] << 12) + (1 << 11);
-        int ex = (max_x << 12) + (1 << 11);
-        int ey = (max_y << 12) + (1 << 11);
-        if (l != 0) {
-            dx = (ex - px) / l;
-            dy = (ey - py) / l;
-        } else {
-            dx = 0;
-            dy = 0;
-        }
-        
-        a = used[py >> 12][px >> 12];
-        while (used[py >> 12][px >> 12] == a || 
-               (used[py >> 12][px >> 12] == 1 && (py >> 12) < static_cast<long long>(used.size())
-                && (px >> 12) < static_cast<long long>(used[0].size()))) {
-            img(py >> 12, px >> 12) = make_tuple(255, 0, 255);
-            px += dx;
-            py += dy;
-        }
-
+        dir_x[i] = max_x;
+        dir_y[i] = max_y;
         ok.clear();
     }
+}
+
+void find_way(Image &img, const vector <vector <uint>> &used,
+              vector <uint> &avg_x, vector <uint> &avg_y, uint i,
+              vector <uint> &dir_x, vector <uint> &dir_y, vector <uint> &perim,
+              vector <uint> &area, vector <double> &elongation/*, vector <Rect> &path*/)
+{
+    cout << i+1 << ": " << elongation[i] << " ";
+    if (perim[i]*perim[i] / area[i] > 17 || perim[i]*perim[i] / area[i] < 14 ||
+        elongation[i] < 3.5 || elongation[i] > 4.15)
+        return;
+    long long l, dx, dy;
+    long long xr = abs(dir_x[i] - avg_x[i]);
+    long long yr = abs(dir_y[i] - avg_y[i]);
+    if (xr > yr)
+        l = xr;
+    else
+        l = yr;
+    long long px = (avg_x[i] << 12) + (1 << 11);
+    long long py = (avg_y[i] << 12) + (1 << 11);
+    long long ex = (dir_x[i] << 12) + (1 << 11);
+    long long ey = (dir_y[i] << 12) + (1 << 11);
+    if (l != 0) {
+        dx = (ex - px) / l;
+        dy = (ey - py) / l;
+    } else {
+        dx = 0;
+        dy = 0;
+    }
+
+    while ((py >> 12) < static_cast<long long>(img.n_rows) && (px >> 12) < static_cast<long long>(img.n_cols) &&
+           (used[py >> 12][px >> 12] == i+1 || used[py >> 12][px >> 12] == 1)) {
+        img(py >> 12, px >> 12) = make_tuple(255, 0, 255);
+        px += dx;
+        py += dy;
+    }
+
+    cout << dir_y[i] << " " << dir_x[i] << "; " << endl;
+
+    find_way(img, used, avg_x, avg_y, used[py >> 12][px >> 12] - 1, dir_x, dir_y, perim, area, elongation);
+}
+
+uint find_red_ptr(const Image &img, const vector <vector <uint>> &used)
+{
+    uint r, g, b, pix = 0;
+    for (uint i = 1; i < img.n_rows-1; i++)
+        for (uint j = 1; j < img.n_cols-1; j++) {
+            pix = 0;
+            for (uint k = i-1; k <= i+1; k++)
+                for (uint l = j-1; l <= j+1; l++) {
+                    tie(r, g, b) = img(k, l);
+                    if (r > 230 && g < 70 && b < 70)
+                        pix++;
+                }
+            if (pix >= 7)
+                return used[i][j];
+        }
+    return 0;
 }
 
 tuple<vector<Rect>, Image>
@@ -272,14 +301,11 @@ find_treasure(const Image& in)
     }
 
     Image img = in.deep_copy();
-    for (uint i = 0; i < in.n_rows; i++)
+    /*for (uint i = 0; i < in.n_rows; i++)
         for (uint j = 0; j < in.n_cols; j++) {
             img(i, j) = make_tuple(255-5*used[i][j], 255-15*used[i][j], 255-30*used[i][j]);
         }
-
-    for (uint i = 0; i < avg_x.size(); i++)
-        img(avg_y[i], avg_x[i]) = make_tuple(255, 255, 255);
-
+    
     int a, b;
     for (uint i = 0; i < border.size(); ++i) {
         for (uint j = 0; j < border[i].size(); ++j) {
@@ -287,8 +313,15 @@ find_treasure(const Image& in)
             img(a, b) = make_tuple(0, 0, 0);
         }
     }
+    */
+    vector <uint> dir_x(k), dir_y(k);
+    find_dirs(border, avg_x, avg_y, theta, dir_x, dir_y);
+    find_way(img, used, avg_x, avg_y, find_red_ptr(in, used) - 1, dir_x, dir_y, perim, area, elongation/*, path*/);
 
-    find_way(/*in, */img, used, border, avg_x, avg_y, theta);
+    // img = binimg;
+    /*for (uint i = 0; i < avg_x.size(); i++)
+        img(avg_y[i], avg_x[i]) = make_tuple(255, 0, 0);
+*/
 
     /*for (uint i = 0; i < used.size(); i++) {
         for (uint j = 0; j < used[0].size(); j++)
