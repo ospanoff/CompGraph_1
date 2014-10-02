@@ -90,13 +90,16 @@ uint bfs(vector <vector <uint>> &used, const Image &binimg)
 void make_binarization(Image &img)
 {
     uint r, g, b;
+    uint threshold = 33;
+    vector <uint> histogram(256);
     for (uint i = 0; i < img.n_rows; i++)
         for (uint j = 0; j < img.n_cols; j++) {
             tie(r, g, b) = img(i, j);
-            uint lumin = 0;
+            uint lumin = 255;
             // RGB Luminance value = 0.299 R + 0.587 G + 0.114 B
-            if (1 - (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.9)
-                lumin = 255;
+            if (0.299 * r + 0.587 * g + 0.114 * b < threshold)
+                lumin = 0;
+            histogram[lumin]++;
             img(i, j) = make_tuple(lumin, lumin, lumin);
         }
 }
@@ -113,7 +116,7 @@ vector <double> moment(const vector <vector <uint>> &used, const int m, const in
     return v;
 }
 
-void count_geometrical_characteristics(const vector <vector <uint>> &used,
+void count_geometrical_characteristics(const vector <vector <uint>> &used, vector <vector <tuple<uint, uint>>> &border,
                                        vector <uint> &area, vector <uint> &avg_x,
                                        vector <uint> &avg_y, vector <uint> &perim,
                                        vector <double> &elongation, vector <double> &theta)
@@ -126,8 +129,10 @@ void count_geometrical_characteristics(const vector <vector <uint>> &used,
             avg_y[used[i][j]-1] += i;
             if (used[i][j] > 1 &&
                 (used[i >= 1 ? i-1 : i][j]-1) * (used[i+1 < used.size() ? i+1 : i][j]-1) *
-                (used[i][j >= 1 ? j-1 : j]-1) * (used[i][j+1 < used[0].size() ? j+1 : j]-1) == 0)
+                (used[i][j >= 1 ? j-1 : j]-1) * (used[i][j+1 < used[0].size() ? j+1 : j]-1) == 0) {
                 perim[used[i][j]-1]++;
+                border[used[i][j]-1].push_back(make_tuple(i, j));
+            }
         }
 
     for (uint i = 0; i < avg_x.size(); i++) {
@@ -143,13 +148,58 @@ void count_geometrical_characteristics(const vector <vector <uint>> &used,
     for (uint i = 0; i < avg_x.size(); i++) {
         elongation[i] = (moment20[i] + moment02[i] + sqrt(pow((moment20[i] - moment02[i]), 2) + 4*pow(moment11[i], 2))) /
                         (moment20[i] + moment02[i] - sqrt(pow((moment20[i] - moment02[i]), 2) + 4*pow(moment11[i], 2)));
-        cout << i+1 << ": Moments: " << "(" << moment11[i] << ",\t" << moment20[i] << ",\t" << moment02[i] << ")" << endl;
+        // cout << i+1 << ": Moments: " << "(" << moment11[i] << ",\t" << moment20[i] << ",\t" << moment02[i] << ")" << endl;
     }
     cout << endl;
 
     // counting angles
     for (uint i = 0; i < avg_x.size(); i++)
         theta[i] = atan(2 * moment11[i] / (moment20[i] - moment02[i])) / 2;
+}
+
+void find_way(/*const Image &in, */Image &img,
+              const vector <vector <tuple<uint, uint>>> &border,
+              vector <uint> &avg_x, vector <uint> &avg_y, vector <double> &theta)
+{
+    // Image im(in);
+
+    vector <tuple <uint, uint>> ok;
+    long long a, b;    
+    double EPS = 0.03;
+    for (uint i = 1; i < border.size(); i++) {
+        for (uint j = 0; j < border[i].size(); j++) {
+            tie(a, b) = border[i][j];
+            // cout << a << ' ' << avg_y[i] << "| " << b << ' ' << avg_x[i] << "; \n";
+            double at;
+            if (b == avg_x[i])
+                at = atan(M_PI/2);
+            else
+                at = atan(fabs((a - static_cast<long long>(avg_y[i]))) / fabs((b - static_cast<long long>(avg_x[i]))));
+            
+            if (at > M_PI/4)
+                at -= M_PI/2;
+            if (at < -M_PI/4)
+                at += M_PI/2;
+
+            if (fabs(at - theta[i]) < EPS || fabs(at + theta[i]) < EPS) {
+                ok.push_back(make_tuple(a, b));
+            }
+        }
+        long long max_x = avg_x[i], max_y = avg_y[i];
+        for (uint k = 0; k < ok.size(); k++) {
+            tie(a, b) = ok[k];
+            img(a, b) = make_tuple(0, 0, 255);
+            long long dx = b - avg_x[i];
+            long long dy = a - avg_y[i];
+            long long m_dx = max_x - avg_x[i];
+            long long m_dy = max_y - avg_y[i];
+            if (dx * dx + dy * dy > m_dy * m_dy + m_dx * m_dx) {
+                max_x = b;
+                max_y = a;
+            }
+        }
+        img(max_y, max_x) = make_tuple(255, 0, 0);
+    }
 }
 
 tuple<vector<Rect>, Image>
@@ -175,7 +225,8 @@ find_treasure(const Image& in)
     vector <uint> area(k), avg_x(k), avg_y(k), perim(k);
     vector <double> elongation(k);
     vector <double> theta(k);
-    count_geometrical_characteristics(used, area, avg_x, avg_y, perim, elongation, theta);
+    vector <vector <tuple <uint, uint>>> border(k);
+    count_geometrical_characteristics(used, border, area, avg_x, avg_y, perim, elongation, theta);
     
     /*for (uint i = 0; i < used.size(); i++)
         for (uint j = 0; j < used[0].size(); j++)
@@ -183,7 +234,7 @@ find_treasure(const Image& in)
                 used[i][j] = 1;
     */
 
-    for (uint i = 1; i < k; i++) {
+    for (uint i = 0; i < k; i++) {
         cout << i+1 << ": " << " \tPerim: " << perim[i] << " \tArea: " << area[i] <<
         " \tCompact: " << perim[i]*perim[i] / area[i] << " \tElongation: " << elongation[i] <<
         " \tAngles: " << theta[i] << " \tAvg point (" << avg_x[i] << ", " << avg_y[i] << ")" << endl;
@@ -192,11 +243,27 @@ find_treasure(const Image& in)
     Image img = in.deep_copy();
     for (uint i = 0; i < in.n_rows; i++)
         for (uint j = 0; j < in.n_cols; j++) {
-            img(i, j) = make_tuple(255-5*used[i][j], 255-15*used[i][j], 255-30*used[i][j]/*col/3, col/2, col/5*/);
+            img(i, j) = make_tuple(255-5*used[i][j], 255-15*used[i][j], 255-30*used[i][j]);
         }
 
     for (uint i = 0; i < avg_x.size(); i++)
         img(avg_y[i], avg_x[i]) = make_tuple(255, 255, 255);
+
+    int a, b;
+    for (uint i = 0; i < border.size(); ++i) {
+        for (uint j = 0; j < border[i].size(); ++j) {
+            tie(a, b) = border[i][j];
+            img(a, b) = make_tuple(0, 0, 0);
+        }
+    }
+
+    find_way(/*in, */img, border, avg_x, avg_y, theta);
+
+    /*for (uint i = 0; i < used.size(); i++) {
+        for (uint j = 0; j < used[0].size(); j++)
+            cout << used[i][j];
+        cout << endl;
+    }*/
 
     return make_tuple(path, img/*in.deep_copy()*/);
 }
