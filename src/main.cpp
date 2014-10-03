@@ -86,7 +86,7 @@ uint bfs(vector <vector <uint>> &used, const Image &binimg)
     return k;
 }
 
-// Makes img binary (!should add binarization by histogram!)
+// Makes img binary by luminance
 void make_binarization(Image &img)
 {
     uint r, g, b;
@@ -150,24 +150,39 @@ void count_geometrical_characteristics(const vector <vector <uint>> &used, vecto
                         (moment20[i] + moment02[i] - sqrt(pow((moment20[i] - moment02[i]), 2) + 4*pow(moment11[i], 2)));
         // cout << i+1 << ": Moments: " << "(" << moment11[i] << ",\t" << moment20[i] << ",\t" << moment02[i] << ")" << endl;
     }
-    cout << endl;
+    // cout << endl;
 
     // counting angles
     for (uint i = 0; i < avg_x.size(); i++)
         theta[i] = atan(2 * moment11[i] / (moment20[i] - moment02[i])) / 2;
 }
 
-void find_dirs(const vector <vector <tuple<uint, uint>>> &border,
+// finds tip of ptr and Rect in which elements are inscribed
+void find_dirs(const Image &img, const vector <vector <tuple<uint, uint>>> &border,
                vector <uint> &avg_x, vector <uint> &avg_y, vector <double> &theta,
-               vector <uint> &dir_x, vector <uint> &dir_y)
+               vector <uint> &dir_x, vector <uint> &dir_y, vector <Rect> &rects)
 {
     vector <tuple <uint, uint>> ok;
     long long a, b;    
-    double EPS = 0.03;
+    double EPS = 0.025;
     for (uint i = 1; i < border.size(); i++) {
+        uint max_xe = 0;
+        uint min_xe = img.n_cols;
+        uint max_ye = 0;
+        uint min_ye = img.n_rows;
         // find direction dots
         for (uint j = 0; j < border[i].size(); j++) {
             tie(a, b) = border[i][j];
+
+            if (a > max_ye)
+                max_ye = a;
+            if (a < min_ye)
+                min_ye = a;
+            if (b > max_xe)
+                max_xe = b;
+            if (b < min_xe)
+                min_xe = b;
+
             double at;
             if (b == avg_x[i])
                 at = M_PI/2;
@@ -183,6 +198,7 @@ void find_dirs(const vector <vector <tuple<uint, uint>>> &border,
                 ok.push_back(make_tuple(a, b));
             }
         }
+        rects.push_back(make_tuple(min_xe, min_ye, max_xe, max_ye));
 
         // ...cont. of finding direction
         tie(a, b) = ok[0];
@@ -204,15 +220,18 @@ void find_dirs(const vector <vector <tuple<uint, uint>>> &border,
     }
 }
 
+// draws lines of path and rects of elements on path
 void find_way(Image &img, const vector <vector <uint>> &used,
               vector <uint> &avg_x, vector <uint> &avg_y, uint i,
               vector <uint> &dir_x, vector <uint> &dir_y, vector <uint> &perim,
-              vector <uint> &area, vector <double> &elongation/*, vector <Rect> &path*/)
+              vector <uint> &area, vector <double> &elongation, vector <Rect> &rects, vector <Rect> &path)
 {
-    cout << i+1 << ": " << elongation[i] << " ";
     if (perim[i]*perim[i] / area[i] > 17 || perim[i]*perim[i] / area[i] < 14 ||
-        elongation[i] < 3.5 || elongation[i] > 4.15)
+        elongation[i] < 3.5 || elongation[i] > 4.15) {
+        path.push_back(rects[i-1]);
         return;
+    }
+    path.push_back(rects[i-1]);
     long long l, dx, dy;
     long long xr = abs(dir_x[i] - avg_x[i]);
     long long yr = abs(dir_y[i] - avg_y[i]);
@@ -240,11 +259,10 @@ void find_way(Image &img, const vector <vector <uint>> &used,
         py += dy;
     }
 
-    cout << dir_y[i] << " " << dir_x[i] << "; " << endl;
-
-    find_way(img, used, avg_x, avg_y, used[py >> 12][px >> 12] - 1, dir_x, dir_y, perim, area, elongation);
+    find_way(img, used, avg_x, avg_y, used[py >> 12][px >> 12] - 1, dir_x, dir_y, perim, area, elongation, rects, path);
 }
 
+// finds and retruns red ptr label
 uint find_red_ptr(const Image &img, const vector <vector <uint>> &used)
 {
     uint r, g, b, pix = 0;
@@ -263,12 +281,29 @@ uint find_red_ptr(const Image &img, const vector <vector <uint>> &used)
     return 0;
 }
 
+void draw_rects(Image &img, vector <Rect> &path)
+{
+    uint x, y, w, h;
+    for (uint i = 0; i < path.size(); i++) {
+        tie(x, y, w, h) = path[i];
+        uint dx = x;
+        uint dy = y;
+        while (dx <= w) {
+            img(y, dx) = make_tuple(255, 0, 0);
+            img(h, dx) = make_tuple(255, 0, 0);
+            dx++;
+        }
+        while (dy <= h) {
+            img(dy, x) = make_tuple(255, 0, 0);
+            img(dy, w) = make_tuple(255, 0, 0);
+            dy++;
+        }
+    }
+}
+
 tuple<vector<Rect>, Image>
 find_treasure(const Image& in)
 {
-    // Base: return Rect of treasure only
-    // Bonus: return Rects of arrows and then treasure Rect
-
     auto path = vector<Rect>();
         
     Image binimg = in.deep_copy();
@@ -281,7 +316,7 @@ find_treasure(const Image& in)
         rows.resize(in.n_cols);
 
     uint k = bfs(used, binimg);
-    cout << k << endl;
+    // cout << k << endl;
 
     vector <uint> area(k), avg_x(k), avg_y(k), perim(k);
     vector <double> elongation(k);
@@ -289,24 +324,39 @@ find_treasure(const Image& in)
     vector <vector <tuple <uint, uint>>> border(k);
     count_geometrical_characteristics(used, border, area, avg_x, avg_y, perim, elongation, theta);
     
-    /*for (uint i = 0; i < used.size(); i++)
+    /*
+    for (uint i = 0; i < used.size(); i++)
         for (uint j = 0; j < used[0].size(); j++)
             if (area[used[i][j]-1] < 350 || area[used[i][j]-1] > 4800)
                 used[i][j] = 1;
     */
 
+    /*
     for (uint i = 0; i < k; i++) {
         cout << i+1 << ": " << " \tPerim: " << perim[i] << " \tArea: " << area[i] <<
         " \tCompact: " << perim[i]*perim[i] / area[i] << " \tElongation: " << elongation[i] <<
         " \tAngles: " << theta[i] << " \tAvg point (" << avg_x[i] << ", " << avg_y[i] << ")" << endl;
     }
+    */
 
     Image img = in.deep_copy();
-    /*for (uint i = 0; i < in.n_rows; i++)
+    /*
+    for (uint i = 0; i < in.n_rows; i++)
         for (uint j = 0; j < in.n_cols; j++) {
             img(i, j) = make_tuple(255-5*used[i][j], 255-15*used[i][j], 255-30*used[i][j]);
         }
-    
+    */
+    vector <uint> dir_x(k), dir_y(k);
+    auto rects = vector<Rect>();
+
+    find_dirs(img, border, avg_x, avg_y, theta, dir_x, dir_y, rects);
+    find_way(img, used, avg_x, avg_y, find_red_ptr(in, used) - 1, dir_x, dir_y, perim, area, elongation, rects, path);
+
+    vector <Rect> treasure;
+    treasure.push_back(path[path.size() - 1]);
+    draw_rects(img, treasure);
+
+    /*
     int a, b;
     for (uint i = 0; i < border.size(); ++i) {
         for (uint j = 0; j < border[i].size(); ++j) {
@@ -315,16 +365,15 @@ find_treasure(const Image& in)
         }
     }
     */
-    vector <uint> dir_x(k), dir_y(k);
-    find_dirs(border, avg_x, avg_y, theta, dir_x, dir_y);
-    find_way(img, used, avg_x, avg_y, find_red_ptr(in, used) - 1, dir_x, dir_y, perim, area, elongation/*, path*/);
 
     // img = binimg;
-    /*for (uint i = 0; i < avg_x.size(); i++)
+    /*
+    for (uint i = 0; i < avg_x.size(); i++)
         img(avg_y[i], avg_x[i]) = make_tuple(255, 0, 0);
-*/
+    */
 
-    /*for (uint i = 0; i < used.size(); i++) {
+    /*
+    for (uint i = 0; i < used.size(); i++) {
         for (uint j = 0; j < used[0].size(); j++)
             cout << used[i][j];
         cout << endl;
