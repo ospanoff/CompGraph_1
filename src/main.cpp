@@ -49,6 +49,41 @@ public:
     static const int radius = 2;
 };
 
+
+void autolevels(Image &img)
+{
+    uint r, g, b;
+    uint max_r(0), max_g(0), max_b(0);
+    uint min_r(255), min_g(255), min_b(255);
+
+    for (uint i = 0; i < img.n_rows; i++)
+        for (uint j = 0; j < img.n_cols; j++) {
+            tie(r, g, b) = img(i, j);
+            if (r > max_r)
+                max_r = r;
+            if (g > max_g)
+                max_g = g;
+            if (b > max_b)
+                max_b = b;
+            if (r < min_r)
+                min_r = r;
+            if (g < min_g)
+                min_g = g;
+            if (b < min_b)
+                min_b = b;
+        }
+
+    for (uint i = 0; i < img.n_rows; i++)
+        for (uint j = 0; j < img.n_cols; j++) {
+            tie(r, g, b) = img(i, j);
+            r = 255 * (r - min_r) / (max_r - min_r);
+            g = 255 * (g - min_g) / (max_g - min_g);
+            b = 255 * (b - min_b) / (max_b - min_b);
+            img(i, j) = make_tuple(r, g, b);
+        }
+}
+
+
 // Finds connected components
 uint bfs(vector <vector <uint>> &used, const Image &binimg)
 {
@@ -86,12 +121,132 @@ uint bfs(vector <vector <uint>> &used, const Image &binimg)
     return k;
 }
 
+
+// Returns threshold for grayscale img
+uint otsuThreshold(vector <uint> &image)
+{
+    uint min = image[0], max = image[0];
+    uint temp;
+
+    /**** Histogram construction ****/
+    /* Find max and min grayscale */
+    for(uint i = 0; i < image.size(); i++) {
+        temp = image[i];
+        if (temp < min)
+            min = temp;
+        if (temp > max)
+            max = temp;
+    }
+
+    vector <uint> hist(max - min + 1);
+    for (uint i = 0; i < hist.size(); i++)
+        hist[i] = 0;
+    
+    for(uint i = 0; i < image.size(); i++)
+        hist[image[i] - min]++;
+
+    // for(uint i = 0; i < image.size(); i++)
+        // hist[image[i] - min] /= image.size();
+    /**** Histogram has constructed ****/
+
+    uint temp1 = temp = 0;
+    uint alpha(0), beta(0), threshold(0);
+    double sigma, maxSigma = -1;
+    
+    /* Counting expectation */
+    for(uint i = 0; i <= (max - min); i++) {
+        temp += i * hist[i];
+        temp1 += hist[i];
+    }
+
+    /* Main cycle for finding threshold
+    find grayscale with minimal dispersion */
+    for(uint i = 0; i < (max - min); i++) {
+        alpha += i * hist[i];
+        beta += hist[i];
+        double w1 = static_cast<double>(beta) / static_cast<double>(temp1);
+        double a = static_cast<double>(alpha) / static_cast<double>(beta) - 
+                   static_cast<double>((temp - alpha)) / static_cast<double>((temp1 - beta));
+
+        sigma = w1 * (1 - w1) * a * a;
+
+        if (sigma > maxSigma) {
+            maxSigma = sigma;
+            threshold = i;
+        }
+    }
+    return threshold + min;
+}
+
+
+uint BHThreshold(vector <uint> &image)
+{
+    uint min = image[0], max = image[0];
+    uint temp;
+
+    /**** Histogram construction ****/
+    /* Find max and min grayscale */
+    for(uint i = 0; i < image.size(); i++) {
+        temp = image[i];
+        if (temp < min)
+            min = temp;
+        if (temp > max)
+            max = temp;
+    }
+
+    vector <uint> hist(max - min + 1);
+    for (uint i = 0; i < hist.size(); i++)
+        hist[i] = 0;
+    
+    for(uint i = 0; i < image.size(); i++)
+        hist[image[i] - min]++;
+
+    /**** Histogram has constructed ****/
+
+    uint i_s(0), i_e(hist.size()-1);
+    uint i_m = static_cast<uint>((i_s + i_e) / 2.0f);
+
+    uint w_l(0), w_r(0);
+    for (uint i = i_s; i < i_m + 1; i++)
+        w_l += hist[i];
+
+    for (uint i = i_m + 1; i < i_e + 1; i++)
+        w_r += hist[i];
+
+    while (i_s <= i_e) {
+        if (w_r > w_l) { // правая часть тяжелее
+            w_r -= hist[i_e--];
+            if (((i_s + i_e) / 2) < i_m) {
+                w_r += hist[i_m];
+                w_l -= hist[i_m--];
+            }
+        } else { // левая часть тяжелее
+            w_l -= hist[i_s++]; 
+            if (((i_s + i_e) / 2) > i_m) {
+                w_l += hist[i_m + 1];
+                w_r -= hist[i_m + 1];
+                i_m++;
+            }
+        }
+    }
+    return i_m;
+}
+
+
 // Makes img binary by luminance
 void make_binarization(Image &img)
 {
     uint r, g, b;
-    double threshold = 18;
-    vector <uint> histogram(256);
+    vector <uint> gs_img;
+    for (uint i = 0; i < img.n_rows; i++)
+        for (uint j = 0; j < img.n_cols; j++) {
+            tie(r, g, b) = img(i ,j);
+            gs_img.push_back(0.299 * r + 0.587 * g + 0.114 * b);
+        }
+
+    double threshold = 33;
+    // cout << BHThreshold(gs_img);
+    // cout << otsuThreshold(gs_img);
     for (uint i = 0; i < img.n_rows; i++)
         for (uint j = 0; j < img.n_cols; j++) {
             tie(r, g, b) = img(i, j);
@@ -99,10 +254,10 @@ void make_binarization(Image &img)
             // RGB Luminance value = 0.299 R + 0.587 G + 0.114 B
             if (0.299 * r + 0.587 * g + 0.114 * b < threshold)
                 lumin = 0;
-            histogram[lumin]++;
             img(i, j) = make_tuple(lumin, lumin, lumin);
         }
 }
+
 
 vector <double> moment(const vector <vector <uint>> &used, const int m, const int n,
             const vector <uint> &avg_x, const vector <uint> &avg_y)
@@ -115,6 +270,7 @@ vector <double> moment(const vector <vector <uint>> &used, const int m, const in
         }
     return v;
 }
+
 
 void count_geometrical_characteristics(const vector <vector <uint>> &used, vector <vector <tuple<uint, uint>>> &border,
                                        vector <uint> &area, vector <uint> &avg_x,
@@ -148,17 +304,16 @@ void count_geometrical_characteristics(const vector <vector <uint>> &used, vecto
     for (uint i = 0; i < avg_x.size(); i++) {
         elongation[i] = (moment20[i] + moment02[i] + sqrt(pow((moment20[i] - moment02[i]), 2) + 4*pow(moment11[i], 2))) /
                         (moment20[i] + moment02[i] - sqrt(pow((moment20[i] - moment02[i]), 2) + 4*pow(moment11[i], 2)));
-        // cout << i+1 << ": Moments: " << "(" << moment11[i] << ",\t" << moment20[i] << ",\t" << moment02[i] << ")" << endl;
     }
-    // cout << endl;
 
     // counting angles
     for (uint i = 0; i < avg_x.size(); i++)
         theta[i] = atan(2 * moment11[i] / (moment20[i] - moment02[i])) / 2;
 }
 
+
 // finds tip of ptr and Rect in which elements are inscribed
-void find_dirs(const Image &img, const vector <vector <tuple<uint, uint>>> &border,
+void find_dirs(const Image &in, const Image &img, const vector <vector <tuple<uint, uint>>> &border,
                vector <uint> &avg_x, vector <uint> &avg_y, vector <double> &theta,
                vector <uint> &dir_x, vector <uint> &dir_y, vector <Rect> &rects)
 {
@@ -198,20 +353,41 @@ void find_dirs(const Image &img, const vector <vector <tuple<uint, uint>>> &bord
                 ok.push_back(make_tuple(a, b));
             }
         }
-        rects.push_back(make_tuple(min_xe, min_ye, max_xe, max_ye));
 
+        uint r, g, bl;
+        long long gr_x(-1), gr_y(-1);
+        rects.push_back(make_tuple(min_xe, min_ye, max_xe, max_ye));
+        for (uint ii = min_ye; ii <= max_ye; ii++)
+            for (uint j = min_xe; j <= max_xe; j++) {
+                tie(r, g, bl) = in(ii, j);
+                if (r < 150 && bl < 150 && g > 180) {
+                    gr_x = j;
+                    gr_y = ii;
+                }
+            }
+        
         // ...cont. of finding direction
         tie(a, b) = ok[0];
         long long max_x = b, max_y = a;
         for (uint k = 0; k < ok.size(); k++) {
             tie(a, b) = ok[k];
-            double dx = fabs(b - avg_x[i]);
-            double dy = fabs(a - avg_y[i]);
-            double m_dx = fabs(max_x - avg_x[i]);
-            double m_dy = fabs(max_y - avg_y[i]);
+            long long dgr_x = gr_x - avg_x[i];
+            long long dgr_y = gr_y - avg_y[i];
+            double dx = b - avg_x[i];
+            double dy = a - avg_y[i];
+            double m_dx = max_x - avg_x[i];
+            double m_dy = max_y - avg_y[i];
             if (dx * dx + dy * dy > m_dy * m_dy + m_dx * m_dx) {
-                max_x = b;
-                max_y = a;
+                if (gr_x > 0) {
+                    if ((dx > 0 && dgr_x > 0) || (dy > 0 && dgr_y > 0) ||
+                    (dx < 0 && dgr_x < 0) || (dy < 0 && dgr_y < 0)) {
+                        max_x = b;
+                        max_y = a;
+                    }
+                } else {
+                    max_x = b;
+                    max_y = a;
+                }
             }
         }
         dir_x[i] = max_x;
@@ -220,14 +396,15 @@ void find_dirs(const Image &img, const vector <vector <tuple<uint, uint>>> &bord
     }
 }
 
+
 // draws lines of path and rects of elements on path
 void find_way(Image &img, const vector <vector <uint>> &used,
               vector <uint> &avg_x, vector <uint> &avg_y, uint i,
               vector <uint> &dir_x, vector <uint> &dir_y, vector <uint> &perim,
               vector <uint> &area, vector <double> &elongation, vector <Rect> &rects, vector <Rect> &path)
 {
-    if (perim[i]*perim[i] / area[i] > 17 || perim[i]*perim[i] / area[i] < 14 ||
-        elongation[i] < 3.5 || elongation[i] > 4.15) {
+    if (perim[i]*perim[i] / area[i] > 17 || perim[i]*perim[i] / area[i] < 13 ||
+        elongation[i] < 3.1 || elongation[i] > 4.25) {
         path.push_back(rects[i-1]);
         return;
     }
@@ -251,16 +428,20 @@ void find_way(Image &img, const vector <vector <uint>> &used,
         dy = 0;
     }
 
-    while ((py >> 12) >= 0 && (px >> 12) >= 0 &&
-           (py >> 12) < static_cast<long long>(img.n_rows) && (px >> 12) < static_cast<long long>(img.n_cols) &&
-           (used[py >> 12][px >> 12] == i+1 || used[py >> 12][px >> 12] == 1)) {
+    while ((used[py >> 12][px >> 12] == i+1 || used[py >> 12][px >> 12] == 1)) {
         img(py >> 12, px >> 12) = make_tuple(255, 0, 255);
         px += dx;
         py += dy;
+        if ((py >> 12) < 0 || (px >> 12) < 0 ||
+           (py >> 12) >= static_cast<long long>(img.n_rows) || (px >> 12) >= static_cast<long long>(img.n_cols)) {
+            cout << endl << i << endl;
+            return;            
+        }
     }
 
     find_way(img, used, avg_x, avg_y, used[py >> 12][px >> 12] - 1, dir_x, dir_y, perim, area, elongation, rects, path);
 }
+
 
 // finds and retruns red ptr label
 uint find_red_ptr(const Image &img, const vector <vector <uint>> &used)
@@ -272,14 +453,16 @@ uint find_red_ptr(const Image &img, const vector <vector <uint>> &used)
             for (uint k = i-1; k <= i+1; k++)
                 for (uint l = j-1; l <= j+1; l++) {
                     tie(r, g, b) = img(k, l);
-                    if (r > 230 && g < 70 && b < 70)
+                    if (r > 160 && g < 80 && b < 80)
                         pix++;
                 }
             if (pix >= 7)
                 return used[i][j];
         }
+    throw "No red pointer";
     return 0;
 }
+
 
 void draw_rects(Image &img, vector <Rect> &path)
 {
@@ -301,22 +484,32 @@ void draw_rects(Image &img, vector <Rect> &path)
     }
 }
 
+
 tuple<vector<Rect>, Image>
 find_treasure(const Image& in)
 {
     auto path = vector<Rect>();
         
-    Image binimg = in.deep_copy();
+    Image filtered_img = in.deep_copy();
+
+    /* filteering step */
+    autolevels(filtered_img);
+    filtered_img = filtered_img.unary_map(MedianFilter());
+    // return make_tuple(path, filtered_img);
+
+    /* binarization step */
+    Image binimg = filtered_img.deep_copy();
     make_binarization(binimg);
 
+    /* binary img filtering step */
     binimg = binimg.unary_map(MedianFilter());
+    // return make_tuple(path, binimg);
 
     vector <vector <uint>> used(in.n_rows);
     for (auto &rows : used)
         rows.resize(in.n_cols);
 
     uint k = bfs(used, binimg);
-    // cout << k << endl;
 
     vector <uint> area(k), avg_x(k), avg_y(k), perim(k);
     vector <double> elongation(k);
@@ -349,38 +542,16 @@ find_treasure(const Image& in)
     vector <uint> dir_x(k), dir_y(k);
     auto rects = vector<Rect>();
 
-    find_dirs(img, border, avg_x, avg_y, theta, dir_x, dir_y, rects);
-    find_way(img, used, avg_x, avg_y, find_red_ptr(in, used) - 1, dir_x, dir_y, perim, area, elongation, rects, path);
+    find_dirs(filtered_img, img, border, avg_x, avg_y, theta, dir_x, dir_y, rects);
+    find_way(img, used, avg_x, avg_y, find_red_ptr(filtered_img, used) - 1, dir_x, dir_y, perim, area, elongation, rects, path);
 
     vector <Rect> treasure;
     treasure.push_back(path[path.size() - 1]);
     draw_rects(img, treasure);
 
-    /*
-    int a, b;
-    for (uint i = 0; i < border.size(); ++i) {
-        for (uint j = 0; j < border[i].size(); ++j) {
-            tie(a, b) = border[i][j];
-            img(a, b) = make_tuple(0, 0, 0);
-        }
-    }
-    */
-
-    // img = binimg;
-    /*
-    for (uint i = 0; i < avg_x.size(); i++)
-        img(avg_y[i], avg_x[i]) = make_tuple(255, 0, 0);
-    */
-
-    /*
-    for (uint i = 0; i < used.size(); i++) {
-        for (uint j = 0; j < used[0].size(); j++)
-            cout << used[i][j];
-        cout << endl;
-    }*/
-
-    return make_tuple(path, img/*in.deep_copy()*/);
+    return make_tuple(path, img);
 }
+
 
 int main(int argc, char **argv)
 {
