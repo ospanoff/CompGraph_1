@@ -49,6 +49,47 @@ public:
     static const int radius = 2;
 };
 
+class Erosion
+{
+public:
+    tuple<uint, uint, uint> operator () (const Image &m) const
+    {
+        uint size = 2 * radius + 1;
+        uint r, g, b;
+        for (uint i = 0; i < size; ++i) {
+            for (uint j = 0; j < size; ++j) {
+                // Tie is useful for taking elements from tuple
+                tie(r, g, b) = m(i, j);
+                if (r < 5 && g < 5 && b < 5)
+                    return make_tuple(0, 0, 0);
+            }
+        }
+        return make_tuple(255, 255, 255);
+    }
+    // Radius of neighbourhoud, which is passed to that operator
+    static const int radius = 2;
+};
+
+class Dilation
+{
+public:
+    tuple<uint, uint, uint> operator () (const Image &m) const
+    {
+        uint size = 2 * radius + 1;
+        uint r, g, b;
+        for (uint i = 0; i < size; ++i) {
+            for (uint j = 0; j < size; ++j) {
+                // Tie is useful for taking elements from tuple
+                tie(r, g, b) = m(i, j);
+                if (r > 250 && g > 250 && b > 250)
+                    return make_tuple(255, 255, 255);
+            }
+        }
+        return make_tuple(0, 0, 0);
+    }
+    // Radius of neighbourhoud, which is passed to that operator
+    static const int radius = 2;
+};
 
 void autolevels(Image &img)
 {
@@ -244,7 +285,18 @@ void make_binarization(Image &img)
             gs_img.push_back(0.299 * r + 0.587 * g + 0.114 * b);
         }
 
+    vector <uint> hist(256);
+    for (uint i = 0; i < hist.size(); i++)
+        hist[i] = 0;
+
+    for (uint i = 0; i < gs_img.size(); i++)
+        hist[gs_img[i]]++;
+
     double threshold = 33;
+    cout << hist[threshold] << endl;
+    if (hist[threshold] == 0 || hist[threshold] > 1500)
+        threshold = 2 * otsuThreshold(gs_img) / 3;
+    cout << threshold << endl;
     // cout << BHThreshold(gs_img);
     // cout << otsuThreshold(gs_img);
     for (uint i = 0; i < img.n_rows; i++)
@@ -502,6 +554,8 @@ find_treasure(const Image& in)
     make_binarization(binimg);
 
     /* binary img filtering step */
+    binimg = binimg.unary_map(Dilation());
+    binimg = binimg.unary_map(Erosion());
     binimg = binimg.unary_map(MedianFilter());
     // return make_tuple(path, binimg);
 
@@ -533,6 +587,7 @@ find_treasure(const Image& in)
     */
 
     Image img = in.deep_copy();
+    // Image img = binimg;
     /*
     for (uint i = 0; i < in.n_rows; i++)
         for (uint j = 0; j < in.n_cols; j++) {
