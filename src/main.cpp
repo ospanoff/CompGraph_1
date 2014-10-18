@@ -67,7 +67,7 @@ public:
         return make_tuple(255, 255, 255);
     }
     // Radius of neighbourhoud, which is passed to that operator
-    static const int radius = 2;
+    static const int radius = 1;
 };
 
 class Dilation
@@ -88,7 +88,7 @@ public:
         return make_tuple(0, 0, 0);
     }
     // Radius of neighbourhoud, which is passed to that operator
-    static const int radius = 2;
+    static const int radius = 1;
 };
 
 void autolevels(Image &img)
@@ -292,11 +292,11 @@ void make_binarization(Image &img)
     for (uint i = 0; i < gs_img.size(); i++)
         hist[gs_img[i]]++;
 
-    double threshold = 33;
+    double threshold = 30;
     cout << hist[threshold] << endl;
-    if (hist[threshold] == 0 || hist[threshold] > 1500)
-        threshold = 2 * otsuThreshold(gs_img) / 3;
-    cout << threshold << endl;
+    if (hist[threshold] == 0)
+        threshold = 5 * otsuThreshold(gs_img) / 9;
+    cout << threshold;
     // cout << BHThreshold(gs_img);
     // cout << otsuThreshold(gs_img);
     for (uint i = 0; i < img.n_rows; i++)
@@ -408,7 +408,7 @@ void find_dirs(const Image &in, const Image &img, const vector <vector <tuple<ui
 
         uint r, g, bl;
         long long gr_x(-1), gr_y(-1);
-        rects.push_back(make_tuple(min_xe, min_ye, max_xe, max_ye));
+        rects.push_back(make_tuple(min_xe, min_ye, max_xe - min_xe, max_ye - min_ye));
         for (uint ii = min_ye; ii <= max_ye; ii++)
             for (uint j = min_xe; j <= max_xe; j++) {
                 tie(r, g, bl) = in(ii, j);
@@ -511,7 +511,7 @@ uint find_red_ptr(const Image &img, const vector <vector <uint>> &used)
             if (pix >= 7)
                 return used[i][j];
         }
-    throw "No red pointer";
+    throw string("No red pointer");
     return 0;
 }
 
@@ -521,6 +521,8 @@ void draw_rects(Image &img, vector <Rect> &path)
     uint x, y, w, h;
     for (uint i = 0; i < path.size(); i++) {
         tie(x, y, w, h) = path[i];
+        w += x;
+        h += y;
         uint dx = x;
         uint dy = y;
         while (dx <= w) {
