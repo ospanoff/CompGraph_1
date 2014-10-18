@@ -24,6 +24,11 @@ using std::queue;
 #include "io.h"
 #include "matrix.h"
 
+/*
+Problem was in format of writing rect params. Was: (x1, y1, x2, y2)
+Need: (x1, y1, x2 - x1, y2 - y1)
+*/
+
 typedef tuple<uint, uint, uint, uint> Rect;
 
 class MedianFilter
@@ -292,11 +297,9 @@ void make_binarization(Image &img)
     for (uint i = 0; i < gs_img.size(); i++)
         hist[gs_img[i]]++;
 
-    double threshold = 30;
-    cout << hist[threshold] << endl;
+    double threshold = 25;
     if (hist[threshold] == 0)
         threshold = 5 * otsuThreshold(gs_img) / 9;
-    cout << threshold;
     // cout << BHThreshold(gs_img);
     // cout << otsuThreshold(gs_img);
     for (uint i = 0; i < img.n_rows; i++)
@@ -572,30 +575,9 @@ find_treasure(const Image& in)
     vector <double> theta(k);
     vector <vector <tuple <uint, uint>>> border(k);
     count_geometrical_characteristics(used, border, area, avg_x, avg_y, perim, elongation, theta);
-    
-    /*
-    for (uint i = 0; i < used.size(); i++)
-        for (uint j = 0; j < used[0].size(); j++)
-            if (area[used[i][j]-1] < 350 || area[used[i][j]-1] > 4800)
-                used[i][j] = 1;
-    */
-
-    /*
-    for (uint i = 0; i < k; i++) {
-        cout << i+1 << ": " << " \tPerim: " << perim[i] << " \tArea: " << area[i] <<
-        " \tCompact: " << perim[i]*perim[i] / area[i] << " \tElongation: " << elongation[i] <<
-        " \tAngles: " << theta[i] << " \tAvg point (" << avg_x[i] << ", " << avg_y[i] << ")" << endl;
-    }
-    */
 
     Image img = in.deep_copy();
-    // Image img = binimg;
-    /*
-    for (uint i = 0; i < in.n_rows; i++)
-        for (uint j = 0; j < in.n_cols; j++) {
-            img(i, j) = make_tuple(255-5*used[i][j], 255-15*used[i][j], 255-30*used[i][j]);
-        }
-    */
+
     vector <uint> dir_x(k), dir_y(k);
     auto rects = vector<Rect>();
 
